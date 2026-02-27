@@ -580,6 +580,7 @@ class PipesK8sClient(PipesClient, TreatAsResourceParam):
                 # the ready state in the second while loop, which respects the below timeout only.
                 # Very rarely, the pod will be Evicted there and we have to wait the default, unless set.
                 wait_timeout=ready_timeout,
+                pod_launch_timeout=ready_timeout,
                 ignore_containers=ignore_containers,
             )
 
