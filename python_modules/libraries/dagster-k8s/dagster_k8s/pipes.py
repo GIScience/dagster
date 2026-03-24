@@ -453,6 +453,7 @@ class PipesK8sClient(PipesClient, TreatAsResourceParam):
         ignore_containers: set | None = None,
         enable_multi_container_logs: bool = False,
         pod_wait_timeout: float = DEFAULT_WAIT_TIMEOUT,
+        pod_ready_timeout: float = WAIT_TIMEOUT_FOR_READY
     ) -> PipesClientCompletedInvocation:
         """Publish a kubernetes pod and wait for it to complete, enriched with the pipes protocol.
 
@@ -529,6 +530,7 @@ class PipesK8sClient(PipesClient, TreatAsResourceParam):
                     pod_name=pod_name,
                     enable_multi_container_logs=enable_multi_container_logs,
                     ignore_containers=ignore_containers,
+                    ready_timeout=pod_ready_timeout,
                 ):
                     # wait until the pod is fully terminated (or raise an exception if it failed)
                     client.wait_for_pod(
@@ -553,6 +555,7 @@ class PipesK8sClient(PipesClient, TreatAsResourceParam):
         pod_name: str,
         enable_multi_container_logs: bool = False,
         ignore_containers: set | None = None,
+        ready_timeout: float = WAIT_TIMEOUT_FOR_READY
     ) -> Iterator:
         """Consume pod logs in the background if possible simple context manager to setup pod log consumption.
 
@@ -576,7 +579,8 @@ class PipesK8sClient(PipesClient, TreatAsResourceParam):
                 # After init container gains a status in the first while loop, there is still a check for
                 # the ready state in the second while loop, which respects the below timeout only.
                 # Very rarely, the pod will be Evicted there and we have to wait the default, unless set.
-                wait_timeout=WAIT_TIMEOUT_FOR_READY,
+                wait_timeout=ready_timeout,
+                pod_launch_timeout=ready_timeout,
                 ignore_containers=ignore_containers,
             )
 
