@@ -164,7 +164,11 @@ class BuildkiteContext(Generic[T_Config]):
         norm_name = name.replace("_", "-")
         if norm_name not in self._packages:
             all_packages_str = "\n".join([pkg.name for pkg in sorted(self._packages.values())])
-            raise Exception(f"Could not find {name} in package list. Packages:\n{all_packages_str}")
+            raise Exception(
+                f"Could not find {name} in package list. Packages are discovered via"
+                " `git ls-files '**/tox.ini'` — ensure the package has a tox.ini file committed"
+                f"and tracked by git.\nPackages:\n{all_packages_str}"
+            )
         return self._packages[norm_name]
 
     def has_package(self, name: str) -> bool:
@@ -267,8 +271,15 @@ class BuildkiteContext(Generic[T_Config]):
             for path in self.changed_files
         )
 
-    def has_dg_or_component_integration_changes(self) -> bool:
-        return self.has_dg_changes() or self.has_component_integration_changes()
+    def has_rest_resources_changes(self) -> bool:
+        return any("dagster-rest-resources" in str(path) for path in self.changed_files)
+
+    def has_dg_or_component_integration_or_rest_resource_changes(self) -> bool:
+        return (
+            self.has_dg_changes()
+            or self.has_component_integration_changes()
+            or self.has_rest_resources_changes()
+        )
 
     def has_storage_test_fixture_changes(self) -> bool:
         return any(
