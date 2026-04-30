@@ -631,6 +631,7 @@ type Asset {
   latestEventSortKey: ID
   assetHealth: AssetHealth
   latestMaterializationTimestamp: Float
+  latestObservationTimestamp: Float
   hasDefinitionOrRecord: Boolean!
   latestFailedToMaterializeTimestamp: Float
   freshnessStatusChangedTimestamp: Float
@@ -732,11 +733,13 @@ type AssetNode {
   assetPartitionStatuses: AssetPartitionStatuses!
   partitionStats: PartitionStats
   metadataEntries: [MetadataEntry!]!
+  storageAddress: StorageAddress
   tags: [DefinitionTag!]!
   kinds: [String!]!
   op: SolidDefinition
   opName: String
   opNames: [String!]!
+  opTags: [DefinitionTag!]!
   opVersion: String
   partitionDefinition: PartitionDefinition
   partitionKeys: [String!]!
@@ -979,6 +982,11 @@ type PartitionStats {
   numPartitions: Int!
   numFailed: Int!
   numMaterializing: Int!
+}
+
+type StorageAddress {
+  storageKind: String
+  tableName: String!
 }
 
 type DefinitionTag {
@@ -2485,6 +2493,8 @@ type Repository {
   schedules: [Schedule!]!
   sensors(sensorType: SensorType): [Sensor!]!
   assetNodes: [AssetNode!]!
+  assetNodesConnection(cursor: String, limit: Int!): AssetNodeConnection!
+  assetManifest: GenericScalar
   displayMetadata: [RepositoryMetadata!]!
   assetGroups: [AssetGroup!]!
   allTopLevelResourceDetails: [ResourceDetails!]!
@@ -2538,6 +2548,12 @@ enum SensorType {
   AUTO_MATERIALIZE
   AUTOMATION
   UNKNOWN
+}
+
+type AssetNodeConnection {
+  nodes: [AssetNode!]!
+  cursor: String
+  hasMore: Boolean!
 }
 
 type AssetGroup {
@@ -3412,7 +3428,7 @@ union RunsOrError = Runs | InvalidPipelineRunsFilterError | PythonError
 
 type Runs implements PipelineRuns {
   results: [Run!]!
-  count: Int
+  count: Int!
 }
 
 interface PipelineRuns {

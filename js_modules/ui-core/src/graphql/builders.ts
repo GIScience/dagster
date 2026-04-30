@@ -155,6 +155,7 @@ type Asset = {
   latestEventSortKey: Maybe<Scalars['ID']['output']>;
   latestFailedToMaterializeTimestamp: Maybe<Scalars['Float']['output']>;
   latestMaterializationTimestamp: Maybe<Scalars['Float']['output']>;
+  latestObservationTimestamp: Maybe<Scalars['Float']['output']>;
 };
 
 type AssetAssetEventHistoryArgs = {
@@ -670,6 +671,7 @@ type AssetNode = {
   op: Maybe<SolidDefinition>;
   opName: Maybe<Scalars['String']['output']>;
   opNames: Array<Scalars['String']['output']>;
+  opTags: Array<DefinitionTag>;
   opVersion: Maybe<Scalars['String']['output']>;
   owners: Array<AssetOwner>;
   partitionDefinition: Maybe<PartitionDefinition>;
@@ -684,6 +686,7 @@ type AssetNode = {
   staleCausesByPartition: Maybe<Array<Array<StaleCause>>>;
   staleStatus: Maybe<StaleStatus>;
   staleStatusByPartition: Array<StaleStatus>;
+  storageAddress: Maybe<StorageAddress>;
   tags: Array<DefinitionTag>;
   targetingInstigators: Array<Instigator>;
   type: Maybe<ListDagsterType | NullableDagsterType | RegularDagsterType>;
@@ -759,6 +762,13 @@ type AssetNodeStaleStatusArgs = {
 
 type AssetNodeStaleStatusByPartitionArgs = {
   partitions?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+type AssetNodeConnection = {
+  __typename: 'AssetNodeConnection';
+  cursor: Maybe<Scalars['String']['output']>;
+  hasMore: Scalars['Boolean']['output'];
+  nodes: Array<AssetNode>;
 };
 
 type AssetNodeDefinitionCollision = {
@@ -4527,7 +4537,9 @@ type Repository = {
   __typename: 'Repository';
   allTopLevelResourceDetails: Array<ResourceDetails>;
   assetGroups: Array<AssetGroup>;
+  assetManifest: Maybe<Scalars['GenericScalar']['output']>;
   assetNodes: Array<AssetNode>;
+  assetNodesConnection: AssetNodeConnection;
   displayMetadata: Array<RepositoryMetadata>;
   hasLocationDocs: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
@@ -4542,6 +4554,11 @@ type Repository = {
   sensors: Array<Sensor>;
   usedSolid: Maybe<UsedSolid>;
   usedSolids: Array<UsedSolid>;
+};
+
+type RepositoryAssetNodesConnectionArgs = {
+  cursor?: InputMaybe<Scalars['String']['input']>;
+  limit: Scalars['Int']['input'];
 };
 
 type RepositorySensorsArgs = {
@@ -5144,7 +5161,7 @@ type RunTagsOrError = PythonError | RunTags;
 
 type Runs = PipelineRuns & {
   __typename: 'Runs';
-  count: Maybe<Scalars['Int']['output']>;
+  count: Scalars['Int']['output'];
   results: Array<Run>;
 };
 
@@ -5735,6 +5752,12 @@ type StopSensorMutationResult = {
 
 type StopSensorMutationResultOrError = PythonError | StopSensorMutationResult | UnauthorizedError;
 
+type StorageAddress = {
+  __typename: 'StorageAddress';
+  storageKind: Maybe<Scalars['String']['output']>;
+  tableName: Scalars['String']['output'];
+};
+
 type Subscription = {
   __typename: 'Subscription';
   capturedLogs: CapturedLogs;
@@ -6309,6 +6332,10 @@ export const buildAsset = (
       overrides && overrides.hasOwnProperty('latestMaterializationTimestamp')
         ? overrides.latestMaterializationTimestamp!
         : 1.04,
+    latestObservationTimestamp:
+      overrides && overrides.hasOwnProperty('latestObservationTimestamp')
+        ? overrides.latestObservationTimestamp!
+        : 1.7,
   };
 };
 
@@ -7441,6 +7468,7 @@ export const buildAssetNode = (
           : buildSolidDefinition({}, relationshipsToOmit),
     opName: overrides && overrides.hasOwnProperty('opName') ? overrides.opName! : 'veritatis',
     opNames: overrides && overrides.hasOwnProperty('opNames') ? overrides.opNames! : [],
+    opTags: overrides && overrides.hasOwnProperty('opTags') ? overrides.opTags! : [],
     opVersion:
       overrides && overrides.hasOwnProperty('opVersion') ? overrides.opVersion! : 'cupiditate',
     owners: overrides && overrides.hasOwnProperty('owners') ? overrides.owners! : [],
@@ -7492,6 +7520,12 @@ export const buildAssetNode = (
       overrides && overrides.hasOwnProperty('staleStatusByPartition')
         ? overrides.staleStatusByPartition!
         : [],
+    storageAddress:
+      overrides && overrides.hasOwnProperty('storageAddress')
+        ? overrides.storageAddress!
+        : relationshipsToOmit.has('StorageAddress')
+          ? ({} as StorageAddress)
+          : buildStorageAddress({}, relationshipsToOmit),
     tags: overrides && overrides.hasOwnProperty('tags') ? overrides.tags! : [],
     targetingInstigators:
       overrides && overrides.hasOwnProperty('targetingInstigators')
@@ -7509,6 +7543,20 @@ export const buildAssetNode = (
                 relationshipsToOmit.has('RegularDagsterType')
               ? ({} as RegularDagsterType)
               : buildRegularDagsterType({}, relationshipsToOmit),
+  };
+};
+
+export const buildAssetNodeConnection = (
+  overrides?: Partial<AssetNodeConnection>,
+  _relationshipsToOmit: Set<string> = new Set(),
+): {__typename: 'AssetNodeConnection'} & AssetNodeConnection => {
+  const relationshipsToOmit: Set<string> = new Set(_relationshipsToOmit);
+  relationshipsToOmit.add('AssetNodeConnection');
+  return {
+    __typename: 'AssetNodeConnection',
+    cursor: overrides && overrides.hasOwnProperty('cursor') ? overrides.cursor! : 'quos',
+    hasMore: overrides && overrides.hasOwnProperty('hasMore') ? overrides.hasMore! : false,
+    nodes: overrides && overrides.hasOwnProperty('nodes') ? overrides.nodes! : [],
   };
 };
 
@@ -13871,7 +13919,17 @@ export const buildRepository = (
         ? overrides.allTopLevelResourceDetails!
         : [],
     assetGroups: overrides && overrides.hasOwnProperty('assetGroups') ? overrides.assetGroups! : [],
+    assetManifest:
+      overrides && overrides.hasOwnProperty('assetManifest')
+        ? overrides.assetManifest!
+        : 'exercitationem',
     assetNodes: overrides && overrides.hasOwnProperty('assetNodes') ? overrides.assetNodes! : [],
+    assetNodesConnection:
+      overrides && overrides.hasOwnProperty('assetNodesConnection')
+        ? overrides.assetNodesConnection!
+        : relationshipsToOmit.has('AssetNodeConnection')
+          ? ({} as AssetNodeConnection)
+          : buildAssetNodeConnection({}, relationshipsToOmit),
     displayMetadata:
       overrides && overrides.hasOwnProperty('displayMetadata') ? overrides.displayMetadata! : [],
     hasLocationDocs:
@@ -16062,6 +16120,20 @@ export const buildStopSensorMutationResult = (
         : relationshipsToOmit.has('InstigationState')
           ? ({} as InstigationState)
           : buildInstigationState({}, relationshipsToOmit),
+  };
+};
+
+export const buildStorageAddress = (
+  overrides?: Partial<StorageAddress>,
+  _relationshipsToOmit: Set<string> = new Set(),
+): {__typename: 'StorageAddress'} & StorageAddress => {
+  const relationshipsToOmit: Set<string> = new Set(_relationshipsToOmit);
+  relationshipsToOmit.add('StorageAddress');
+  return {
+    __typename: 'StorageAddress',
+    storageKind:
+      overrides && overrides.hasOwnProperty('storageKind') ? overrides.storageKind! : 'occaecati',
+    tableName: overrides && overrides.hasOwnProperty('tableName') ? overrides.tableName! : 'magni',
   };
 };
 

@@ -2016,6 +2016,11 @@ def multi_run_backfill_policy_asset(context):
     pass
 
 
+@asset(op_tags={"foo": "bar", "baz": "qux", "dagster/kind/python": ""})
+def asset_with_op_tags():
+    pass
+
+
 named_groups_job = define_asset_job(
     "named_groups_job",
     [
@@ -2340,6 +2345,16 @@ def table_asset_4():
     pass
 
 
+@asset(
+    metadata={
+        "dagster/table_name": "db.schema.snowflake_table",
+        "dagster/storage_kind": "snowflake",
+    },
+)
+def table_asset_with_kind():
+    pass
+
+
 def define_assets():
     return [
         asset_one,
@@ -2379,6 +2394,7 @@ def define_assets():
         check_in_op_asset,
         single_run_backfill_policy_asset,
         multi_run_backfill_policy_asset,
+        asset_with_op_tags,
         executable_asset,
         unexecutable_asset,
         upstream_dynamic_partitioned_asset,
@@ -2422,6 +2438,7 @@ def define_assets():
         table_asset_2,
         table_asset_3,
         table_asset_4,
+        table_asset_with_kind,
         partitioned_asset_for_checks,
     ]
 

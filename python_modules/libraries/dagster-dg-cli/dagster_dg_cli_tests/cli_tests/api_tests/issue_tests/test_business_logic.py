@@ -7,7 +7,13 @@ GraphQL client mocking or external dependencies.
 import json
 
 from dagster_dg_cli.cli.api.formatters import format_issue, format_issues
-from dagster_rest_resources.schemas.issue import DgApiIssue, DgApiIssueList, DgApiIssueStatus
+from dagster_rest_resources.schemas.enums import DgApiIssueStatus
+from dagster_rest_resources.schemas.issue import (
+    DgApiIssue,
+    DgApiIssueLinkedAsset,
+    DgApiIssueLinkedRun,
+    DgApiIssueList,
+)
 
 
 class TestFormatIssues:
@@ -17,28 +23,32 @@ class TestFormatIssues:
         """Create sample IssueList for testing."""
         issues = [
             DgApiIssue(
-                id="issue-1-uuid-12345",
+                id="1",
                 title="Asset materialization failed",
                 description="The asset failed to materialize due to a connection error.",
                 status=DgApiIssueStatus.OPEN,
                 created_by_email="alice@example.com",
-                run_id="run-abc-123",
-                asset_key=["my_asset"],
+                linked_objects=[
+                    DgApiIssueLinkedRun(run_id="run-abc-123"),
+                    DgApiIssueLinkedAsset(asset_key="my_asset"),
+                ],
             ),
             DgApiIssue(
-                id="issue-2-uuid-67890",
+                id="2",
                 title="Schedule missed execution",
                 description="The daily schedule did not execute as expected.",
                 status=DgApiIssueStatus.CLOSED,
                 created_by_email="bob@example.com",
+                linked_objects=[],
             ),
             DgApiIssue(
-                id="issue-3-uuid-abcdef",
+                id="3",
                 title="Sensor error",
                 description="Sensor encountered an unhandled exception.",
                 status=DgApiIssueStatus.OPEN,
                 created_by_email="carol@example.com",
                 context="Stack trace: ...",
+                linked_objects=[],
             ),
         ]
         return DgApiIssueList(items=issues, cursor=None, has_more=False)
@@ -51,25 +61,28 @@ class TestFormatIssues:
         """Create IssueList with pagination cursor for testing."""
         issues = [
             DgApiIssue(
-                id="issue-page-1-uuid",
+                id="1",
                 title="First paginated issue",
                 description="Description for first paginated issue.",
                 status=DgApiIssueStatus.OPEN,
                 created_by_email="dave@example.com",
+                linked_objects=[],
             ),
         ]
-        return DgApiIssueList(items=issues, cursor="next-page-cursor-xyz", has_more=True)
+        return DgApiIssueList(items=issues, cursor="1", has_more=True)
 
     def _create_single_issue(self):
         """Create single Issue for testing."""
         return DgApiIssue(
-            id="single-issue-uuid-xyz",
+            id="1",
             title="Critical pipeline failure",
             description="The pipeline failed with a critical error during execution.",
             status=DgApiIssueStatus.OPEN,
             created_by_email="engineer@example.com",
-            run_id="run-xyz-789",
-            asset_key=["namespace", "my_critical_asset"],
+            linked_objects=[
+                DgApiIssueLinkedRun(run_id="run-xyz-789"),
+                DgApiIssueLinkedAsset(asset_key="namespace/my_critical_asset"),
+            ],
             context="Additional diagnostic information here.",
         )
 
@@ -128,11 +141,12 @@ class TestFormatIssues:
     def test_format_issue_minimal_fields(self, snapshot):
         """Test formatting issue with only required fields (no optional fields)."""
         issue = DgApiIssue(
-            id="minimal-issue-uuid",
+            id="1",
             title="Minimal issue",
             description="Only required fields.",
             status=DgApiIssueStatus.CLOSED,
             created_by_email="user@example.com",
+            linked_objects=[],
         )
         result = format_issue(issue, as_json=False)
         snapshot.assert_match(result)
@@ -140,12 +154,148 @@ class TestFormatIssues:
     def test_format_issue_with_run_id_only(self, snapshot):
         """Test formatting issue with run_id but no asset_key or context."""
         issue = DgApiIssue(
-            id="run-only-issue-uuid",
+            id="1",
             title="Run failure issue",
             description="This issue is linked to a specific run.",
             status=DgApiIssueStatus.OPEN,
             created_by_email="ops@example.com",
-            run_id="run-failing-456",
+            linked_objects=[DgApiIssueLinkedRun(run_id="run-failing-456")],
         )
         result = format_issue(issue, as_json=False)
         snapshot.assert_match(result)
+
+    def test_format_created_issue_text_output(self, snapshot):
+        """Test formatting a newly created issue as text."""
+        issue = DgApiIssue(
+            id="1",
+            title="New pipeline issue",
+            description="Pipeline failed unexpectedly.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="creator@example.com",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=False)
+        snapshot.assert_match(result)
+
+    def test_format_created_issue_json_output(self, snapshot):
+        """Test formatting a newly created issue as JSON."""
+        issue = DgApiIssue(
+            id="1",
+            title="New pipeline issue",
+            description="Pipeline failed unexpectedly.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="creator@example.com",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=True)
+        parsed = json.loads(result)
+        snapshot.assert_match(parsed)
+
+    def test_format_updated_issue_text_output(self, snapshot):
+        """Test formatting an updated issue as text."""
+        issue = DgApiIssue(
+            id="1",
+            title="Updated issue title",
+            description="Updated description after investigation.",
+            status=DgApiIssueStatus.CLOSED,
+            created_by_email="owner@example.com",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=False)
+        snapshot.assert_match(result)
+
+    def test_format_updated_issue_json_output(self, snapshot):
+        """Test formatting an updated issue as JSON."""
+        issue = DgApiIssue(
+            id="1",
+            title="Updated issue title",
+            description="Updated description after investigation.",
+            status=DgApiIssueStatus.CLOSED,
+            created_by_email="owner@example.com",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=True)
+        parsed = json.loads(result)
+        snapshot.assert_match(parsed)
+
+    def test_format_updated_issue_with_context_text_output(self, snapshot):
+        """Test formatting an updated issue with context as text."""
+        issue = DgApiIssue(
+            id="1",
+            title="Updated issue title",
+            description="Updated description after investigation.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="owner@example.com",
+            context="New context added during update.",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=False)
+        snapshot.assert_match(result)
+
+    def test_format_updated_issue_with_context_json_output(self, snapshot):
+        """Test formatting an updated issue with context as JSON."""
+        issue = DgApiIssue(
+            id="1",
+            title="Updated issue title",
+            description="Updated description after investigation.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="owner@example.com",
+            context="New context added during update.",
+            linked_objects=[],
+        )
+        result = format_issue(issue, as_json=True)
+        parsed = json.loads(result)
+        snapshot.assert_match(parsed)
+
+
+class TestIssueDataProcessing:
+    """Test processing of issue data structures."""
+
+    def test_issue_creation_with_all_statuses(self, snapshot):
+        """Test creating issues with all possible status values."""
+        issues = [
+            DgApiIssue(
+                id=str(i + 1),
+                title=f"Issue with status {status.value}",
+                description=f"Test issue for status {status.value}.",
+                status=status,
+                created_by_email="test@example.com",
+                linked_objects=[],
+            )
+            for i, status in enumerate(DgApiIssueStatus)
+        ]
+
+        issue_list = DgApiIssueList(items=issues, cursor=None, has_more=False)
+        result = issue_list.model_dump_json(indent=2)
+        parsed = json.loads(result)
+        snapshot.assert_match(parsed)
+
+    def test_issue_list_pagination_fields(self):
+        """Test IssueList properly tracks pagination fields."""
+        issue = DgApiIssue(
+            id="1",
+            title="Test",
+            description="Test description.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="test@example.com",
+            linked_objects=[],
+        )
+        issue_list = DgApiIssueList(items=[issue], cursor="1", has_more=True)
+
+        assert len(issue_list.items) == 1
+        assert issue_list.cursor == "1"
+        assert issue_list.has_more is True
+
+    def test_issue_optional_fields_default_to_none(self):
+        """Test that optional fields default to None."""
+        issue = DgApiIssue(
+            id="1",
+            title="Test",
+            description="Test.",
+            status=DgApiIssueStatus.OPEN,
+            created_by_email="test@example.com",
+            linked_objects=[],
+        )
+
+        assert issue.linked_objects == []
+        assert issue.context is None

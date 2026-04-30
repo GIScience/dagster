@@ -32,7 +32,7 @@ from dagster import (
     materialize,
     op,
 )
-from dagster._core.storage.db_io_manager import TableSlice
+from dagster._core.storage.db_io_manager import TablePartitionDimension, TableSlice
 from dagster_snowflake import build_snowflake_io_manager
 from dagster_snowflake.resources import SnowflakeResource
 from dagster_snowflake_polars import (
@@ -54,7 +54,7 @@ resource_config = {
 
 IS_BUILDKITE = os.getenv("BUILDKITE") is not None
 HAS_BUILDKITE_SNOWFLAKE_CREDS = bool(os.getenv("SNOWFLAKE_ACCOUNT")) and bool(
-    os.getenv("SNOWFLAKE_BUILDKITE_PASSWORD")
+    os.getenv("SNOWFLAKE_BUILDKITE_PRIVATE_KEY")
 )
 RUN_BUILDKITE_SNOWFLAKE_TESTS = IS_BUILDKITE and HAS_BUILDKITE_SNOWFLAKE_CREDS
 
@@ -62,7 +62,7 @@ RUN_BUILDKITE_SNOWFLAKE_TESTS = IS_BUILDKITE and HAS_BUILDKITE_SNOWFLAKE_CREDS
 SHARED_BUILDKITE_SNOWFLAKE_CONF: Mapping[str, Any] = {
     "account": os.getenv("SNOWFLAKE_ACCOUNT", ""),
     "user": "BUILDKITE",
-    "password": os.getenv("SNOWFLAKE_BUILDKITE_PASSWORD", ""),
+    "private_key": os.getenv("SNOWFLAKE_BUILDKITE_PRIVATE_KEY", ""),
 }
 
 DATABASE = "TEST_SNOWFLAKE_IO_MANAGER"
@@ -125,6 +125,58 @@ def test_handle_output():
         ),
         "dagster/row_count": 1,
     }
+
+
+def test_handle_output_escapes_partition_key_quotes():
+    """Regression: partition key values with single quotes must be escaped before
+    being interpolated into the DELETE statement, to prevent SQL injection.
+    """
+    handler = SnowflakePolarsTypeHandler()
+    connection = MagicMock()
+    connection.account = "account_abc"
+    connection.user = "user_abc"
+    connection.password = "password_abc"
+    connection.database = "database_abc"
+    connection.schema = "schema_abc"
+    connection.warehouse = "warehouse_abc"
+
+    # Make _table_exists return True so the DELETE path runs
+    show_tables_cursor = MagicMock()
+    show_tables_cursor.__enter__.return_value = show_tables_cursor
+    show_tables_cursor.__exit__.return_value = False
+    show_tables_cursor.fetchall.return_value = [("my_table",)]
+    connection.cursor.return_value = show_tables_cursor
+
+    df = pl.DataFrame({"col1": ["a"], "col2": [1]})
+    output_context = build_output_context(
+        resource_config={**resource_config, "time_data_to_string": False}
+    )
+
+    with patch.object(pl.DataFrame, "write_database", MagicMock()):
+        handler.handle_output(
+            output_context,
+            TableSlice(
+                table="my_table",
+                schema="my_schema",
+                database="my_db",
+                columns=None,
+                partition_dimensions=[
+                    TablePartitionDimension(
+                        partition_expr="my_col",
+                        partitions=["it's a test"],
+                    )
+                ],
+            ),
+            df,
+            connection,
+        )
+
+    executed_sql = [call.args[0] for call in show_tables_cursor.execute.call_args_list]
+    delete_stmts = [sql for sql in executed_sql if sql.startswith("DELETE FROM")]
+    assert len(delete_stmts) == 1
+    assert delete_stmts[0] == (
+        "DELETE FROM MY_DB.MY_SCHEMA.MY_TABLE WHERE\nmy_col in ('it''s a test')"
+    )
 
 
 def test_load_input():

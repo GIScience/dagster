@@ -35,7 +35,6 @@ RUN apt-get update -yqq \
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
-    DOCKER_COMPOSE_VERSION=1.29.1 \
     KIND_VERSION=v0.14.0 \
     KUBECTL_VERSION=v1.20.1 \
     FOSSA_VERSION=1.1.10
@@ -62,7 +61,7 @@ ENV JAVA_HOME /opt/java/openjdk
 RUN update-alternatives --install /usr/bin/java java /opt/java/openjdk/bin/java 1
 
 # Install various packages used in running/installing/testing Dagster:
-# - git/make (cloning dagster, running checks defined in Makefile)
+# - git/just (cloning dagster, running checks)
 # - nodejs/yarn (dagster UI)
 # - assorted others-- some may no longer be required, but leaving in place for now
 #
@@ -116,10 +115,7 @@ RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
     && apt-get -yqq install \
     google-cloud-cli
 
-# Install Docker -- note that we have some older code using `docker-compose` instead of `docker
-# compose`, so we have to install both the `docker-compose` executable and the docker compose CLI
-# plugin. Eventually we should update the code using `docker-compose` and then we can just use the
-# CLI plugin.
+# Install Docker
 # See: https://docs.docker.com/engine/install/debian/
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
     gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
@@ -127,13 +123,15 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
     tee -a /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get -yqq update \
     && apt-get -yqq install \
-    docker-ce docker-ce-cli containerd.io docker-compose-plugin \
-    # Install docker-compose
-    && curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
-    && chmod +x /usr/local/bin/docker-compose
+    docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.5.4 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /bin/
+
+# Install just (task runner-- replaces make for CI steps because it propagates
+# signal exit codes correctly, enabling Buildkite automatic retry on spot
+# reclamation)
+RUN apt-get update -yqq && apt-get install -yqq just
 
 # Install redis
 RUN wget http://download.redis.io/redis-stable.tar.gz \
@@ -179,6 +177,11 @@ COPY --from=snapshot_builder /snapshot-reqs.txt .
 # builds faster in Buildkite.
 RUN uv pip install --system -r /snapshot-reqs.txt \
     && rm /snapshot-reqs.txt
+
+# Remove make from the final image-- CI steps should use just instead, which
+# propagates signal exit codes correctly. make is still available in the
+# system_base stage for building redis etc.
+RUN apt-get remove -yqq make && apt-get autoremove -yqq
 
 # New versions of debian require allowlisting folders where `git` can run
 RUN git config --system --add safe.directory \*

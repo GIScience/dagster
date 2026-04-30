@@ -13,7 +13,7 @@ DOCKER_PLUGIN = "docker#v5.10.0"
 ECR_PLUGIN = "ecr#v2.7.0"
 SM_PLUGIN = "seek-oss/aws-sm#v2.3.1"
 BASE_IMAGE_NAME = "buildkite-test"
-BASE_IMAGE_TAG = "2024-07-17T120716"
+BASE_IMAGE_TAG = "2026-04-23T130027"
 
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
 AWS_ECR_REGION = "us-west-2"
@@ -22,10 +22,17 @@ ECR_LOGIN_FAILURE_EXIT_CODE = 200
 
 
 class ResourceRequests:
-    def __init__(self, cpu: str, memory: str | None, docker_cpu: str = "500m") -> None:
+    def __init__(
+        self,
+        cpu: str,
+        memory: str | None = None,
+        docker_cpu: str = "500m",
+        ephemeral_storage: str | None = None,
+    ) -> None:
         self._cpu = cpu
         self._memory = memory
         self._docker_cpu = docker_cpu
+        self._ephemeral_storage = ephemeral_storage
 
     @property
     def cpu(self) -> str:
@@ -38,6 +45,10 @@ class ResourceRequests:
     @property
     def docker_cpu(self) -> str:
         return self._docker_cpu
+
+    @property
+    def ephemeral_storage(self) -> str | None:
+        return self._ephemeral_storage
 
 
 class BuildkiteQueue(StrEnum):
@@ -105,8 +116,13 @@ class CommandStepBuilder:
                     "exit_status": -10,
                     "limit": 2,
                 },  # example: https://buildkite.com/dagster/internal/builds/108316#0196fd13-d816-42e7-bf26-b264385b245d
+                {
+                    "exit_status": 94,
+                    "limit": 2,
+                },  # checkout failed (e.g. git-mirror clone lock timeout)
                 {"exit_status": 125, "limit": 2},  # docker daemon error
                 {"exit_status": 128, "limit": 2},  # k8s git clone error
+                {"exit_status": 130, "limit": 2},  # SIGINT (e.g. spot reclamation)
                 {"exit_status": 143, "limit": 2},  # agent lost
                 {"exit_status": 255, "limit": 2},  # agent forced shut down
                 {
@@ -117,6 +133,10 @@ class CommandStepBuilder:
                     "exit_status": 28,
                     "limit": 2,
                 },  # node ran out of space, try to reschedule
+                {
+                    "signal_reason": "agent_stop",
+                    "limit": 2,
+                },  # agent stopped (e.g. spot eviction, pod termination)
             ]
 
         self._step = {
@@ -180,7 +200,7 @@ class CommandStepBuilder:
 
     def on_integration_slim_image(self, env: list[str] | None = None) -> Self:
         return self.on_python_image(
-            image="buildkite-test-image-py-slim:pre-6652dfe7da",
+            image="buildkite-test-image-py-slim:prod-1776274200",
             env=env,
         )
 
@@ -250,13 +270,6 @@ class CommandStepBuilder:
             self._step["timeout_in_minutes"] = num_minutes
         return self
 
-    def with_retry(self, num_retries: int | None) -> Self:
-        # Update default retry config to blanket limit with num_retries
-        if num_retries is not None and num_retries > 0:
-            self._step["retry"]["automatic"] = {"limit": num_retries}
-
-        return self
-
     def on_queue(self, queue: BuildkiteQueue) -> Self:
         self._step["agents"]["queue"] = queue.value
         return self
@@ -307,11 +320,15 @@ class CommandStepBuilder:
             else ("1500m" if self._requires_docker else "500m")
         )
         memory = self._resources.memory if self._resources else None
+        default_ephemeral_storage = "10Gi" if self._requires_docker else "5Gi"
+        ephemeral_storage = (
+            self._resources.ephemeral_storage if self._resources else None
+        ) or default_ephemeral_storage
         return {
             "requests": {
                 "cpu": cpu,
                 "memory": memory,
-                "ephemeral-storage": ("10Gi" if self._requires_docker else "5Gi"),
+                "ephemeral-storage": ephemeral_storage,
             },
         }
 
@@ -355,33 +372,14 @@ class CommandStepBuilder:
                 "COMBINED_COMMIT_HASH",
                 "DAGSTER_COMMIT_HASH",
                 "INTERNAL_COMMIT_HASH",
-                "DAGSTER_BRANCH",
             ]
             + [
                 # tox related env variables. ideally these are in
                 # the test specification themselves, but for now this is easier
-                "DD_DOGSTATSD_DISABLE",
                 "AWS_DEFAULT_REGION",
-                "TOYS_SNOWFLAKE_ACCOUNT",
-                "TOYS_SNOWFLAKE_PASSWORD",
-                "TOYS_BIGQUERY_PROJECT",
-                "TOYS_BIGQUERY_CREDENTIALS",
-                "TOYS_GCP_PRIVATE_KEY_ID",
-                "TOYS_GCP_PRIVATE_KEY",
-                "TOYS_GCP_CLIENT_EMAIL",
-                "TOYS_GCP_CLIENT_ID",
-                "TOYS_GCP_CLIENT_CERT_URL",
                 "SNOWFLAKE_ACCOUNT",
                 "SNOWFLAKE_USER",
                 "SNOWFLAKE_PASSWORD",
-                "DAGSTER_SERVERLESS_AWS_ACCOUNT_ID",
-                "DAGSTER_SERVERLESS_SERVICE_NAME",
-                "DAGSTER_SERVERLESS_AWS_ACCOUNT_NAME",
-                "DAGSTER_SERVERLESS_SUBNETS_PER_VPC",
-            ]
-            + [
-                "DATADOG_API_KEY",
-                "FOSSA_API_KEY",
             ]
             + ["PYTEST_DEBUG_TEMPROOT=/tmp"]
             + (env or []),
@@ -391,8 +389,11 @@ class CommandStepBuilder:
     def _base_k8s_settings(self) -> Mapping[Any, Any]:
         buildkite_shell = "/bin/bash -e -c"
         assert self._docker_settings
-        if self._docker_settings["image"] == "hashicorp/terraform:light":
+        image = str(self._docker_settings["image"])
+        if image == "hashicorp/terraform:light" or "/datadog-ci:" in image or "/alpine:" in image:
             buildkite_shell = "/bin/sh -e -c"
+        elif "kaniko-project/executor" in image:
+            buildkite_shell = "/busybox/sh -e -c"
 
         sidecars = []
         if self._requires_docker:

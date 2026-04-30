@@ -406,6 +406,22 @@
         dict({
           '__typename': 'UsedSolid',
           'definition': dict({
+            'name': 'asset_with_op_tags',
+          }),
+          'invocations': list([
+            dict({
+              'pipeline': dict({
+                'name': '__ASSET_JOB',
+              }),
+              'solidHandle': dict({
+                'handleID': 'asset_with_op_tags',
+              }),
+            }),
+          ]),
+        }),
+        dict({
+          '__typename': 'UsedSolid',
+          'definition': dict({
             'name': 'asset_yields_observation',
           }),
           'invocations': list([
@@ -2951,6 +2967,22 @@
               }),
               'solidHandle': dict({
                 'handleID': 'table_asset_4',
+              }),
+            }),
+          ]),
+        }),
+        dict({
+          '__typename': 'UsedSolid',
+          'definition': dict({
+            'name': 'table_asset_with_kind',
+          }),
+          'invocations': list([
+            dict({
+              'pipeline': dict({
+                'name': '__ASSET_JOB',
+              }),
+              'solidHandle': dict({
+                'handleID': 'table_asset_with_kind',
               }),
             }),
           ]),

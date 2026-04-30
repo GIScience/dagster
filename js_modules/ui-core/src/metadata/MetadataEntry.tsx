@@ -45,6 +45,8 @@ export const HIDDEN_METADATA_ENTRY_LABELS = new Set([
   'dagster_dbt/dagster_dbt_translator',
   'dagster_embedded_elt/dagster_sling_translator',
   'dagster_embedded_elt/sling_replication_config',
+  'dagster_sling/dagster_sling_translator',
+  'dagster_sling/sling_replication_config',
 ]);
 
 export type MetadataEntryLabelOnly = Pick<MetadataEntryFragment, '__typename' | 'label'>;
@@ -383,7 +385,7 @@ export const TableMetadataEntryComponent = ({entry}: {entry: TableMetadataEntryF
   return (
     <Box flex={{direction: 'column', gap: 8}}>
       <MetadataEntryAction onClick={() => setShowSchema(true)}>Show schema</MetadataEntryAction>
-      <Table style={{borderRight: `1px solid ${Colors.keylineDefault()}`}} $compact>
+      <Table style={{borderRight: `1px solid ${Colors.keylineDefault()}`}} compact>
         <thead>
           <tr>
             {schema.columns.map((column) => (

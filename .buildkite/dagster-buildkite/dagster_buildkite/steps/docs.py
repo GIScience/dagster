@@ -14,7 +14,7 @@ from buildkite_shared.uv import UV_PIN
 
 def build_repo_wide_format_docs_step(ctx: BuildkiteContext) -> GroupLeafStepConfiguration:
     return (
-        CommandStepBuilder(":notebook: yarn format_check")
+        CommandStepBuilder(":notebook: yarn format_check", key="format-check")
         .on_test_image()
         .run(
             f"cd {oss_path('docs')}",
@@ -47,9 +47,7 @@ def build_build_docs_step(ctx: BuildkiteContext) -> GroupLeafStepConfiguration:
 def build_docstring_validation_step(ctx: BuildkiteContext) -> GroupLeafStepConfiguration:
     python_version = AvailablePythonVersion.get_default()
     return (
-        CommandStepBuilder(
-            f":pytest: docstring validation {python_version.value}", retry_automatically=False
-        )
+        CommandStepBuilder(f":pytest: docstring validation {python_version.value}")
         .on_test_image(python_version.value)
         .run(
             f"cd {oss_path('python_modules/automation')}",

@@ -89,7 +89,7 @@ class DagsterInstance(
     For example, to use Postgres for dagster storage, you can write a ``dagster.yaml`` such as the
     following:
 
-    .. literalinclude:: ../../../../../examples/docs_snippets/docs_snippets/deploying/dagster-pg.yaml
+    .. literalinclude:: ../../../../../examples/docs_snippets/docs_snippets/deployment/oss/dagster-pg.yaml
        :caption: dagster.yaml
        :language: YAML
 
@@ -685,6 +685,12 @@ class DagsterInstance(
     @property
     def is_ephemeral(self) -> bool:
         return self._instance_type == InstanceType.EPHEMERAL
+
+    def legacy_freshness_policy_killswitch_enabled(self) -> bool:
+        return os.getenv("DAGSTER_LEGACY_FRESHNESS_POLICY_KILLSWITCH", "").lower() in (
+            "1",
+            "true",
+        )
 
     def get_ref(self) -> InstanceRef:
         if self._ref:

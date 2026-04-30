@@ -152,6 +152,7 @@ from dagster._core.definitions.declarative_automation.automation_condition impor
     AutomationResult as AutomationResult,
 )
 from dagster._core.definitions.declarative_automation.automation_condition_tester import (
+    EvaluateAutomationConditionsResult as EvaluateAutomationConditionsResult,
     evaluate_automation_conditions as evaluate_automation_conditions,
 )
 from dagster._core.definitions.declarative_automation.automation_context import (
@@ -536,6 +537,7 @@ from dagster._core.pipes.context import (
 from dagster._core.pipes.subprocess import PipesSubprocessClient as PipesSubprocessClient
 from dagster._core.pipes.utils import (
     PipesBlobStoreMessageReader as PipesBlobStoreMessageReader,
+    PipesCompositeMessageReader as PipesCompositeMessageReader,
     PipesEnvContextInjector as PipesEnvContextInjector,
     PipesFileContextInjector as PipesFileContextInjector,
     PipesFileMessageReader as PipesFileMessageReader,
