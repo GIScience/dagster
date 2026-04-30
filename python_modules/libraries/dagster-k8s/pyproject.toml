@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "dagster==1.13.0",
+    "dagster==1.13.2",
     "kubernetes<37",
     # exclude a google-auth release that added an overly restrictive urllib3 pin
     # that confuses dependency resolvers
