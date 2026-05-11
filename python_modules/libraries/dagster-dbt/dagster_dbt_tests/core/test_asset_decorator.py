@@ -1,3 +1,4 @@
+import copy
 import multiprocessing
 import os
 from collections.abc import Mapping, Sequence
@@ -586,7 +587,7 @@ def test_with_description_replacements(test_jaffle_shop_manifest: dict[str, Any]
     expected_description = "customized description"
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_description(self, _: Mapping[str, Any]) -> str:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_description(self, _: Mapping[str, Any]) -> str:  # ty: ignore[invalid-method-override]
             return expected_description
 
     expected_specs_by_key = {
@@ -626,7 +627,7 @@ def test_with_metadata_replacements(test_jaffle_shop_manifest: dict[str, Any]) -
     expected_metadata = {"customized": "metadata"}
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_metadata(self, _: Mapping[str, Any]) -> Mapping[str, Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_metadata(self, _: Mapping[str, Any]) -> Mapping[str, Any]:  # ty: ignore[invalid-method-override]
             return expected_metadata
 
     expected_specs_by_key = {
@@ -651,7 +652,7 @@ def test_with_tag_replacements(test_jaffle_shop_manifest: dict[str, Any]) -> Non
     expected_tags = {"customized": "tag"}
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_tags(self, _: Mapping[str, Any]) -> Mapping[str, str]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_tags(self, _: Mapping[str, Any]) -> Mapping[str, str]:  # ty: ignore[invalid-method-override]
             return expected_tags
 
     expected_specs_by_key = {
@@ -676,7 +677,7 @@ def test_with_owner_replacements(test_jaffle_shop_manifest: dict[str, Any]) -> N
     expected_owners = ["custom@custom.com"]
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_owners(self, _: Mapping[str, Any]) -> Sequence[str] | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_owners(self, _: Mapping[str, Any]) -> Sequence[str] | None:  # ty: ignore[invalid-method-override]
             return expected_owners
 
     expected_specs_by_key = {
@@ -701,7 +702,7 @@ def test_with_group_replacements(test_jaffle_shop_manifest: dict[str, Any]) -> N
     expected_group = "customized_group"
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_group_name(self, _: Mapping[str, Any]) -> str | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_group_name(self, _: Mapping[str, Any]) -> str | None:  # ty: ignore[invalid-method-override]
             return expected_group
 
     expected_specs_by_key = {
@@ -727,7 +728,7 @@ def test_with_code_version_replacements(test_jaffle_shop_manifest: dict[str, Any
     expected_code_version = "customized_code_version"
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_code_version(self, _: Mapping[str, Any]) -> str | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_code_version(self, _: Mapping[str, Any]) -> str | None:  # ty: ignore[invalid-method-override]
             return expected_code_version
 
     @dbt_assets(
@@ -757,7 +758,7 @@ def test_with_auto_materialize_policy_replacements(
     expected_auto_materialize_policy = AutoMaterializePolicy.eager()
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_auto_materialize_policy(  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_auto_materialize_policy(  # ty: ignore[invalid-method-override]
             self, _: Mapping[str, Any]
         ) -> AutoMaterializePolicy | None:
             return expected_auto_materialize_policy
@@ -790,7 +791,7 @@ def test_with_automation_condition_replacements(test_jaffle_shop_manifest: dict[
     expected_automation_condition = AutomationCondition.eager()
 
     class CustomDagsterDbtTranslator(DagsterDbtTranslator):
-        def get_automation_condition(self, _: Mapping[str, Any]) -> AutomationCondition | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        def get_automation_condition(self, _: Mapping[str, Any]) -> AutomationCondition | None:  # ty: ignore[invalid-method-override]
             return expected_automation_condition
 
     expected_specs_by_key = {
@@ -1162,7 +1163,7 @@ def test_dbt_with_semantic_models_and_saved_queries(
 
 
 @pytest.mark.skipif(
-    DBT_PYTHON_VERSION and DBT_PYTHON_VERSION < version.parse("1.8.0"),
+    DBT_PYTHON_VERSION is not None and DBT_PYTHON_VERSION < version.parse("1.8.0"),
     reason="dbt unit test support is only available in `dbt-core>=1.8.0`",
 )
 @pytest.mark.parametrize("select", ["fqn:*", "tag:test"])
@@ -1182,7 +1183,7 @@ def test_dbt_with_unit_tests(test_dbt_unit_tests_manifest: dict[str, Any], selec
 
 
 @pytest.mark.skipif(
-    DBT_PYTHON_VERSION and DBT_PYTHON_VERSION < version.parse("1.11.0"),
+    DBT_PYTHON_VERSION is not None and DBT_PYTHON_VERSION < version.parse("1.11.0"),
     reason="dbt udf support is only available in `dbt-core>=1.11.0`",
 )
 @pytest.mark.parametrize("select", ["fqn:*", "tag:test"])
@@ -1323,3 +1324,92 @@ def test_dbt_with_duplicate_source_asset_keys(
         AssetKey(["customers"]),
         AssetKey(["orders"]),
     }
+
+
+def test_dbt_enable_source_metadata_with_multiple_assets_defs(
+    test_asset_checks_manifest: dict[str, Any],
+) -> None:
+
+    @dbt_assets(
+        manifest=test_asset_checks_manifest,
+        select="stg_customers",
+        dagster_dbt_translator=DagsterDbtTranslator(),
+    )
+    def stg_customers_assets(): ...
+
+    @dbt_assets(
+        manifest=test_asset_checks_manifest,
+        select="stg_customers_again",
+        dagster_dbt_translator=DagsterDbtTranslator(),
+    )
+    def stg_customers_again_assets(): ...
+
+    asset_graph = Definitions(
+        assets=[stg_customers_assets, stg_customers_again_assets],
+    ).resolve_asset_graph()
+
+    # The shared source resolves to a single stub node referenced by both models.
+    raw_customers_key = AssetKey(["jaffle_shop", "raw_customers"])
+    assert raw_customers_key in asset_graph.get_all_asset_keys()
+    assert {AssetKey(["stg_customers"]), AssetKey(["stg_customers_again"])} <= {
+        child for child in asset_graph.get(raw_customers_key).child_keys
+    }
+
+
+def test_dbt_enable_source_metadata_dedupes_collapsed_sources(
+    test_duplicate_source_asset_key_manifest: dict[str, Any],
+) -> None:
+
+    manifest = copy.deepcopy(test_duplicate_source_asset_key_manifest)
+    # Make stg_customers reference all three sources, exercising the per-spec case.
+    stg_customers_id = "model.test_dagster_duplicate_source_asset_key.stg_customers"
+    manifest["nodes"][stg_customers_id]["depends_on"]["nodes"] = [
+        "source.test_dagster_duplicate_source_asset_key.jaffle_shop.raw_customers",
+        "source.test_dagster_duplicate_source_asset_key.jaffle_shop.raw_orders",
+        "source.test_dagster_duplicate_source_asset_key.jaffle_shop.raw_payments",
+    ]
+
+    class CollapseSourcesTranslator(DagsterDbtTranslator):
+        def get_asset_key(self, dbt_resource_props: Mapping[str, Any]) -> AssetKey:
+            if dbt_resource_props["resource_type"] == "source":
+                return AssetKey(["raw_data"])
+            return super().get_asset_key(dbt_resource_props)
+
+    @dbt_assets(
+        manifest=manifest,
+        dagster_dbt_translator=CollapseSourcesTranslator(
+            settings=DagsterDbtTranslatorSettings(
+                enable_duplicate_source_asset_keys=True,
+                enable_source_metadata=True,
+            )
+        ),
+    )
+    def my_dbt_assets(): ...
+
+    raw_data_key = AssetKey(["raw_data"])
+
+    # (a) The three collapsed source deps within stg_customers's spec are deduped to one.
+    stg_customers_spec = next(
+        spec for spec in my_dbt_assets.specs if spec.key == AssetKey(["stg_customers"])
+    )
+    stg_customers_parents = [dep.asset_key for dep in stg_customers_spec.deps]
+    assert stg_customers_parents.count(raw_data_key) == 1
+
+    # All deps to the colliding key carry no source-specific metadata, regardless of
+    # which source produced them.
+    for spec in my_dbt_assets.specs:
+        for dep in spec.deps:
+            if dep.asset_key == raw_data_key:
+                assert not dep.metadata, (
+                    f"Expected empty metadata on dep to colliding key for spec {spec.key}, "
+                    f"got {dep.metadata}"
+                )
+
+    # (b) The full graph resolves without conflicting stub metadata across specs.
+    asset_graph = Definitions(assets=[my_dbt_assets]).resolve_asset_graph()
+    raw_data_node = asset_graph.get(raw_data_key)
+    assert {
+        AssetKey(["stg_customers"]),
+        AssetKey(["stg_orders"]),
+        AssetKey(["stg_payments"]),
+    } <= set(raw_data_node.child_keys)

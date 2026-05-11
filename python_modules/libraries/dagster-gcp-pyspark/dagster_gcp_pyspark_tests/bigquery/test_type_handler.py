@@ -73,7 +73,7 @@ resource_config = {
 IS_BUILDKITE = os.getenv("BUILDKITE") is not None
 
 SHARED_BUILDKITE_BQ_CONFIG = {
-    "project": os.getenv("GCP_PROJECT_ID"),
+    "project": os.environ.get("GCP_PROJECT_ID", ""),
     "temporary_gcs_bucket": "gcs_io_manager_test",
 }
 
@@ -167,7 +167,7 @@ def test_build_bigquery_pyspark_io_manager():
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE BigQuery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_io_manager_with_bigquery_pyspark(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,
@@ -200,7 +200,7 @@ def test_io_manager_with_bigquery_pyspark(spark, io_manager):
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE BigQuery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_time_window_partitioned_asset(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,
@@ -290,7 +290,7 @@ def test_time_window_partitioned_asset(spark, io_manager):
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE BigQuery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_static_partitioned_asset(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,
@@ -374,7 +374,7 @@ def test_static_partitioned_asset(spark, io_manager):
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE BigQuery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_multi_partitioned_asset(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,
@@ -481,7 +481,7 @@ def test_multi_partitioned_asset(spark, io_manager):
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE BigQuery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_dynamic_partitions(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,
@@ -529,7 +529,7 @@ def test_dynamic_partitions(spark, io_manager):
         resource_defs = {"io_manager": io_manager, "fs_io": fs_io_manager}
 
         with instance_for_test() as instance:
-            instance.add_dynamic_partitions(dynamic_fruits.name, ["apple"])  # pyright: ignore[reportArgumentType]
+            instance.add_dynamic_partitions(dynamic_fruits.name, ["apple"])  # ty: ignore[invalid-argument-type]
 
             materialize(
                 [dynamic_partitioned, downstream_partitioned],
@@ -544,7 +544,7 @@ def test_dynamic_partitions(spark, io_manager):
             )
             assert out_df["A"].tolist() == ["1", "1", "1"]
 
-            instance.add_dynamic_partitions(dynamic_fruits.name, ["orange"])  # pyright: ignore[reportArgumentType]
+            instance.add_dynamic_partitions(dynamic_fruits.name, ["orange"])  # ty: ignore[invalid-argument-type]
 
             materialize(
                 [dynamic_partitioned, downstream_partitioned],
@@ -576,7 +576,7 @@ def test_dynamic_partitions(spark, io_manager):
 @pytest.mark.skipif(not IS_BUILDKITE, reason="Requires access to the BUILDKITE bigquery DB")
 @pytest.mark.parametrize("io_manager", [(old_bigquery_io_manager), (pythonic_bigquery_io_manager)])
 @pytest.mark.integration
-@pytest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(reruns=1)
 def test_self_dependent_asset(spark, io_manager):
     with temporary_bigquery_table(
         schema_name=SCHEMA,

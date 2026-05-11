@@ -4,7 +4,8 @@ from enum import StrEnum
 from typing import Any, Self
 
 from buildkite_shared.python_version import AvailablePythonVersion
-from buildkite_shared.utils import BUILDKITE_TEST_IMAGE_VERSION
+from buildkite_shared.step_builders.slug import make_label
+from buildkite_shared.utils import BUILDKITE_TEST_IMAGE_VERSION, RETRYABLE_INFRA_FAILURE_EXIT_CODE
 from typing_extensions import NotRequired, TypedDict
 
 DEFAULT_TIMEOUT_IN_MIN = 35
@@ -13,25 +14,29 @@ DOCKER_PLUGIN = "docker#v5.10.0"
 ECR_PLUGIN = "ecr#v2.7.0"
 SM_PLUGIN = "seek-oss/aws-sm#v2.3.1"
 BASE_IMAGE_NAME = "buildkite-test"
-BASE_IMAGE_TAG = "2026-04-23T130027"
+BASE_IMAGE_TAG = "2026-05-04T142331"
+BUILDKITE_TEST_IMAGE_PY_SLIM = "buildkite-test-image-py-slim:prod-1777949196"
 
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
 AWS_ECR_REGION = "us-west-2"
-
-ECR_LOGIN_FAILURE_EXIT_CODE = 200
 
 
 class ResourceRequests:
     def __init__(
         self,
         cpu: str,
+        *,
         memory: str | None = None,
         docker_cpu: str = "500m",
+        docker_memory: str = "1Gi",
+        docker_memory_limit: str = "2Gi",
         ephemeral_storage: str | None = None,
     ) -> None:
         self._cpu = cpu
         self._memory = memory
         self._docker_cpu = docker_cpu
+        self._docker_memory = docker_memory
+        self._docker_memory_limit = docker_memory_limit
         self._ephemeral_storage = ephemeral_storage
 
     @property
@@ -45,6 +50,14 @@ class ResourceRequests:
     @property
     def docker_cpu(self) -> str:
         return self._docker_cpu
+
+    @property
+    def docker_memory(self) -> str:
+        return self._docker_memory
+
+    @property
+    def docker_memory_limit(self) -> str:
+        return self._docker_memory_limit
 
     @property
     def ephemeral_storage(self) -> str | None:
@@ -88,9 +101,9 @@ class CommandStepBuilder:
 
     def __init__(
         self,
-        label: str,
+        key: str,
+        label_emojis: list[str] | None = None,
         *,
-        key: str | None = None,
         timeout_in_minutes: int = DEFAULT_TIMEOUT_IN_MIN,
         retry_automatically: bool = True,
         plugins: list[dict[str, object]] | None = None,
@@ -108,7 +121,9 @@ class CommandStepBuilder:
         if retry_automatically:
             # This list contains exit codes that should map only to ephemeral infrastructure issues.
             # Normal test failures (exit code 1), make command failures (exit code 2) and the like
-            # should not be included here.
+            # should not be included here. Our shell wrappers may exit with
+            # RETRYABLE_INFRA_FAILURE_EXIT_CODE (200) to escalate a known-transient failure
+            # (e.g. ECR login, pip/uv install) to a fresh-job retry.
             retry["automatic"] = [
                 # https://buildkite.com/docs/agent/v3#exit-codes
                 {"exit_status": -1, "limit": 2},  # agent lost
@@ -126,9 +141,9 @@ class CommandStepBuilder:
                 {"exit_status": 143, "limit": 2},  # agent lost
                 {"exit_status": 255, "limit": 2},  # agent forced shut down
                 {
-                    "exit_status": ECR_LOGIN_FAILURE_EXIT_CODE,
+                    "exit_status": RETRYABLE_INFRA_FAILURE_EXIT_CODE,
                     "limit": 2,
-                },  # ecr login failed
+                },  # our shell wrappers signaling a transient infra failure
                 {
                     "exit_status": 28,
                     "limit": 2,
@@ -141,14 +156,19 @@ class CommandStepBuilder:
 
         self._step = {
             "agents": {"queue": BuildkiteQueue.MEDIUM.value},
-            "label": label,
+            "key": key,
+            "label": make_label(key, label_emojis),
             "timeout_in_minutes": timeout_in_minutes,
             "retry": retry,
             "plugins": plugins or [],
         }
-        self._requires_docker = True  # used for k8s queue
-        if key is not None:
-            self._step["key"] = key
+        # Default off: most steps don't need a docker daemon (lints, type-checkers,
+        # k8s manifests, helm, kaniko image builds, dashboard publishing). Steps that
+        # actually invoke `docker compose`/`docker build`/`docker pull` opt in via
+        # `.with_docker()`. Off-by-default avoids attaching a privileged dind sidecar
+        # — which costs scheduling resources and is the kubelet's first eviction
+        # target under fan-out memory pressure — to steps that don't need one.
+        self._requires_docker = False  # used for k8s queue; opt in via .with_docker()
         self._resources = None
 
     def run(self, *argc: str) -> Self:
@@ -159,8 +179,8 @@ class CommandStepBuilder:
         self._resources = resources
         return self
 
-    def no_docker(self) -> Self:
-        self._requires_docker = False
+    def with_docker(self) -> Self:
+        self._requires_docker = True
         return self
 
     def on_python_image(
@@ -200,7 +220,7 @@ class CommandStepBuilder:
 
     def on_integration_slim_image(self, env: list[str] | None = None) -> Self:
         return self.on_python_image(
-            image="buildkite-test-image-py-slim:prod-1776274200",
+            image=BUILDKITE_TEST_IMAGE_PY_SLIM,
             env=env,
         )
 
@@ -400,18 +420,39 @@ class CommandStepBuilder:
             # Determine docker image based on queue (GKE vs EKS)
             queue = self._step.get("agents", {}).get("queue", "")
             if "gke" in queue:
-                docker_image = "us-central1-docker.pkg.dev/dagster-production/buildkite-images/docker:20.10.16-dind"
+                docker_image = "us-central1-docker.pkg.dev/dagster-production/buildkite-images/docker:28.5.2-dind"
             else:
-                docker_image = "public.ecr.aws/docker/library/docker:20.10.16-dind"
+                docker_image = "public.ecr.aws/docker/library/docker:28.5.2-dind"
 
             sidecars.append(
                 {
                     "image": docker_image,
                     "command": ["dockerd-entrypoint.sh"],
+                    # Bump max-concurrent-downloads/uploads from default 3 to 10 to
+                    # parallelize layer pulls. The dockerd-entrypoint.sh of the
+                    # docker:dind image execs `dockerd` with whatever args are
+                    # passed, so these forward through cleanly.
+                    "args": [
+                        "--max-concurrent-downloads=10",
+                        "--max-concurrent-uploads=10",
+                    ],
+                    # Memory request/limit promote the dind sidecar from
+                    # BestEffort to Burstable QoS, so it isn't the first
+                    # container the kubelet evicts when a node is under
+                    # memory pressure during fan-out waves. Without this,
+                    # docker API calls (`containers.create` etc.) can hang
+                    # for minutes mid-test before the SDK's read timeout
+                    # fires — see test_docker_launcher.py flakes.
                     "resources": {
                         "requests": {
-                            "cpu": self._resources.docker_cpu if self._resources else "500m"
-                        }
+                            "cpu": self._resources.docker_cpu if self._resources else "500m",
+                            "memory": self._resources.docker_memory if self._resources else "1Gi",
+                        },
+                        "limits": {
+                            "memory": self._resources.docker_memory_limit
+                            if self._resources
+                            else "2Gi",
+                        },
                     },
                     "env": [
                         {
@@ -428,6 +469,23 @@ class CommandStepBuilder:
                     "securityContext": {
                         "privileged": True,
                         "allowPrivilegeEscalation": True,
+                    },
+                    # Block main containers from starting until dockerd is
+                    # actually responding to API calls. agent-stack-k8s only
+                    # gates main-container startup on the sidecar's "Started"
+                    # signal, which fires once dockerd's binary is running but
+                    # not necessarily once the daemon is accepting connections.
+                    # `docker info` round-trips to dockerd over the socket, so
+                    # it catches the window between bind() (where the socket
+                    # file appears) and listen()/accept() — a window that
+                    # `test -S /var/run/docker.sock` was passing through,
+                    # letting test code race ahead and hit "Cannot connect to
+                    # the Docker daemon" when invoking `docker compose up`.
+                    "startupProbe": {
+                        "exec": {"command": ["docker", "info"]},
+                        "periodSeconds": 1,
+                        "failureThreshold": 30,
+                        "timeoutSeconds": 5,
                     },
                 }
             )
@@ -501,12 +559,6 @@ class CommandStepBuilder:
                         "envFrom": [
                             {"secretRef": {"name": "buildkite-dagster-secrets"}},
                             {"secretRef": {"name": "honeycomb-api-key"}},
-                            *(
-                                [{"secretRef": {"name": "aws-creds"}}]
-                                if self._step.get("agents", {}).get("queue")
-                                == BuildkiteQueue.KUBERNETES_GKE
-                                else []
-                            ),
                             *[
                                 {"secretRef": {"name": secret_name}}
                                 for secret_name in self._k8s_secrets
@@ -527,8 +579,8 @@ class CommandStepBuilder:
             BuildkiteQueue.KUBERNETES_GKE,
             BuildkiteQueue.KUBERNETES_EKS,
         )
-        if self._requires_docker is False and not on_k8s:
-            raise Exception("you specified .no_docker() but you're not running on kubernetes")
+        # Note: `self._requires_docker` is k8s-only. On non-k8s queues docker is
+        # provided by the host agent regardless of the flag, so we don't gate.
 
         if not on_k8s and self._k8s_secrets:
             raise Exception(

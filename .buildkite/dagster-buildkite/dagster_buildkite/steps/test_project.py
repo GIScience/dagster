@@ -40,9 +40,8 @@ def build_test_project_steps() -> list[GroupStepConfiguration]:
     py_versions = AvailablePythonVersion.get_all()
 
     for version in py_versions:
-        key = _test_project_step_key(version)
         steps.append(
-            CommandStepBuilder(f":docker: test-project {version}", key=key)
+            CommandStepBuilder(_test_project_step_key(version), [":docker:"])
             # these run commands are coupled to the way the buildkite-build-test-project-image is built
             # see python_modules/automation/automation/docker/images/buildkite-build-test-project-image
             .run(
@@ -82,20 +81,21 @@ def build_test_project_steps() -> list[GroupStepConfiguration]:
                 ],
             )
             .with_ecr_login()
+            .with_docker()  # build.sh runs `docker build`; final step `docker push`
             .build()
         )
 
     return [
         GroupStepBuilder(
-            name=":docker: test-project-image",
-            key="test-project-image",
+            "test-project-image",
+            [":docker:"],
             steps=steps,
         ).build()
     ]
 
 
 def _test_project_step_key(version: AvailablePythonVersion) -> str:
-    return f"sample-project-{AvailablePythonVersion.to_tox_factor(version)}"
+    return f"test-project-{version.value.replace('.', '-')}"
 
 
 def test_project_depends_fn(version: AvailablePythonVersion, _) -> list[str]:
