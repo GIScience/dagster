@@ -7,7 +7,12 @@ from dagster_shared.serdes.utils import SerializableTimeDelta
 
 from dagster._core.asset_graph_view.entity_subset import EntitySubset
 from dagster._core.asset_graph_view.timing_metadata import TimingMetadata
-from dagster._core.definitions.asset_key import AssetCheckKey, AssetKey
+from dagster._core.definitions.asset_key import (
+    AssetCheckKey,
+    AssetKey,
+    AssetOrCheckKey,
+    T_EntityKey,
+)
 from dagster._core.definitions.declarative_automation.automation_condition import (
     AutomationResult,
     BuiltinAutomationCondition,
@@ -21,7 +26,6 @@ from dagster._core.definitions.freshness import FreshnessState
 from dagster._core.definitions.partitions.snap.snap import PartitionsSnap
 from dagster._core.definitions.partitions.subset.key_ranges import KeyRangesPartitionsSubset
 from dagster._record import record
-from dagster._utils.schedules import reverse_cron_string_iterator
 
 
 @whitelist_for_serdes
@@ -44,7 +48,7 @@ class CodeVersionChangedCondition(BuiltinAutomationCondition[AssetKey]):
 
 @whitelist_for_serdes
 @record
-class InitialEvaluationCondition(BuiltinAutomationCondition):
+class InitialEvaluationCondition(BuiltinAutomationCondition[AssetOrCheckKey]):
     """Condition to determine if this is the initial evaluation of a given AutomationCondition with a particular PartitionsDefinition."""
 
     @property
@@ -86,7 +90,7 @@ class InitialEvaluationCondition(BuiltinAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class MissingAutomationCondition(SubsetAutomationCondition):
+class MissingAutomationCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "missing"
@@ -99,7 +103,7 @@ class MissingAutomationCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes(storage_name="InProgressAutomationCondition")
 @record
-class RunInProgressAutomationCondition(SubsetAutomationCondition):
+class RunInProgressAutomationCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "run_in_progress"
@@ -112,7 +116,7 @@ class RunInProgressAutomationCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class BackfillInProgressAutomationCondition(SubsetAutomationCondition):
+class BackfillInProgressAutomationCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "backfill_in_progress"
@@ -125,7 +129,7 @@ class BackfillInProgressAutomationCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes(storage_name="FailedAutomationCondition")
 @record
-class ExecutionFailedAutomationCondition(SubsetAutomationCondition):
+class ExecutionFailedAutomationCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "execution_failed"
@@ -138,7 +142,7 @@ class ExecutionFailedAutomationCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class WillBeRequestedCondition(SubsetAutomationCondition):
+class WillBeRequestedCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def description(self) -> str:
         return "Will be requested this tick"
@@ -178,7 +182,7 @@ class WillBeRequestedCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class NewlyRequestedCondition(TimedSubsetAutomationCondition):
+class NewlyRequestedCondition(TimedSubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "newly_requested"
@@ -196,7 +200,7 @@ class NewlyRequestedCondition(TimedSubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class NewlyUpdatedCondition(TimedSubsetAutomationCondition):
+class NewlyUpdatedCondition(TimedSubsetAutomationCondition[AssetOrCheckKey]):
     @property
     def name(self) -> str:
         return "newly_updated"
@@ -278,7 +282,7 @@ class DataVersionChangedCondition(SubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class CronTickPassedCondition(TimedSubsetAutomationCondition):
+class CronTickPassedCondition(TimedSubsetAutomationCondition[T_EntityKey]):
     cron_schedule: str
     cron_timezone: str
 
@@ -286,18 +290,12 @@ class CronTickPassedCondition(TimedSubsetAutomationCondition):
     def name(self) -> str:
         return f"cron_tick_passed(cron_schedule={self.cron_schedule}, cron_timezone={self.cron_timezone})"
 
-    def _get_previous_cron_tick(self, effective_dt: datetime.datetime) -> datetime.datetime:
-        previous_ticks = reverse_cron_string_iterator(
-            end_timestamp=effective_dt.timestamp(),
-            cron_string=self.cron_schedule,
-            execution_timezone=self.cron_timezone,
-        )
-        return next(previous_ticks)
-
     def compute_subset_with_timing_metadata(
         self, context: AutomationContext
     ) -> tuple[EntitySubset, TimingMetadata | None]:
-        previous_cron_tick = self._get_previous_cron_tick(context.evaluation_time)
+        previous_cron_tick = context.asset_graph_view.compute_previous_cron_tick(
+            cron_schedule=self.cron_schedule, cron_timezone=self.cron_timezone
+        )
         if (
             # no previous evaluation
             context.previous_evaluation_time is None
@@ -313,7 +311,7 @@ class CronTickPassedCondition(TimedSubsetAutomationCondition):
 
 @whitelist_for_serdes
 @record
-class InLatestTimeWindowCondition(SubsetAutomationCondition):
+class InLatestTimeWindowCondition(SubsetAutomationCondition[AssetOrCheckKey]):
     serializable_lookback_timedelta: SerializableTimeDelta | None = None
 
     @staticmethod

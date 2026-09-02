@@ -38,7 +38,9 @@ import {
   GraphData,
   GraphNode,
   groupIdForNode,
+  groupedAssetsWithAncestors,
   isGroupId,
+  isHiddenAssetGroupJob,
   tokenForAssetKey,
 } from './Utils';
 import {assetKeyTokensInRange} from './assetKeyTokensInRange';
@@ -52,7 +54,6 @@ import {useFullScreen, useFullScreenAllowedView} from '../app/AppTopNav/AppTopNa
 import {useFeatureFlags} from '../app/useFeatureFlags';
 import {AssetLiveDataRefreshButton} from '../asset-data/AssetLiveDataProvider';
 import {LaunchAssetExecutionButton} from '../assets/LaunchAssetExecutionButton';
-import {AssetKey} from '../assets/types';
 import {DEFAULT_MAX_ZOOM} from '../graph/SVGConsts';
 import {SVGViewport, SVGViewportRef} from '../graph/SVGViewport';
 import {useAssetLayout} from '../graph/asyncGraphLayout';
@@ -134,7 +135,6 @@ export const AssetGraphExplorer = React.memo((props: Props) => {
       key={props.explorerPath.pipelineName}
       assetGraphData={assetGraphData}
       fullAssetGraphData={fullAssetGraphData ?? assetGraphData}
-      allAssetKeys={allAssetKeys}
       graphQueryItems={graphQueryItems}
       loading={graphDataLoading}
       {...props}
@@ -143,7 +143,6 @@ export const AssetGraphExplorer = React.memo((props: Props) => {
 });
 
 type WithDataProps = Props & {
-  allAssetKeys: AssetKey[];
   assetGraphData: GraphData;
   fullAssetGraphData: GraphData;
   graphQueryItems: AssetGraphQueryItem[];
@@ -162,7 +161,6 @@ const AssetGraphExplorerWithData = ({
   fullAssetGraphData,
   graphQueryItems,
   fetchOptions,
-  allAssetKeys,
   viewType,
   loading: dataLoading,
   setHideEdgesToNodesOutsideQuery,
@@ -171,16 +169,11 @@ const AssetGraphExplorerWithData = ({
   const [highlighted, setHighlighted] = React.useState<string[] | null>(null);
 
   const {allGroups, allGroupCounts, groupedAssets} = React.useMemo(() => {
-    const groupedAssets: Record<string, GraphNode[]> = {};
-    Object.values(assetGraphData.nodes).forEach((node) => {
-      const groupId = groupIdForNode(node);
-      groupedAssets[groupId] = groupedAssets[groupId] || [];
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      groupedAssets[groupId]!.push(node);
-    });
+    const groupedAssets = groupedAssetsWithAncestors(Object.values(assetGraphData.nodes));
     const counts: Record<string, number> = {};
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    Object.keys(groupedAssets).forEach((key) => (counts[key] = groupedAssets[key]!.length));
+    for (const [key, assets] of Object.entries(groupedAssets)) {
+      counts[key] = assets.length;
+    }
     return {allGroups: Object.keys(groupedAssets), allGroupCounts: counts, groupedAssets};
   }, [assetGraphData]);
 
@@ -462,7 +455,11 @@ const AssetGraphExplorerWithData = ({
   );
 
   const onFilterToGroup = (group: AssetGroup | GroupLayout) => {
-    const filters: string[] = [`group:"${group.groupName}"`];
+    // Include both an exact match and a wildcard descendant match so that
+    // synthetic ancestor clusters (no asset has group_name === "marketing"
+    // literally, but descendants do) select the visible subtree. The wildcard
+    // form is a no-op for leaf groups with no descendants.
+    const filters: string[] = [`(group:"${group.groupName}" or group:"${group.groupName}/*")`];
 
     if (group.repositoryName && group.repositoryLocationName) {
       const codeLocationFilter = buildRepoPathForHuman(
@@ -556,8 +553,17 @@ const AssetGraphExplorerWithData = ({
                     group={{...group, assets: groupedAssets[group.id] || []}}
                     minimal={scale < MINIMAL_SCALE}
                     onCollapse={() => {
+                      // Strip descendants too — otherwise layout's
+                      // ancestor auto-expansion would undo this collapse.
+                      const prefix = `${group.id}/`;
+                      const next = expandedGroups.filter(
+                        (g) => g !== group.id && !g.startsWith(prefix),
+                      );
+                      if (next.length === expandedGroups.length) {
+                        return;
+                      }
                       focusGroupIdAfterLayoutRef.current = group.id;
-                      setExpandedGroups(expandedGroups.filter((g) => g !== group.id));
+                      setExpandedGroups(next);
                     }}
                     toggleSelectAllNodes={(e: React.MouseEvent) => {
                       toggleSelectAllGroupNodesById(e, group.id);
@@ -819,15 +825,27 @@ const AssetGraphExplorerWithData = ({
                               setErrorState(errors);
                             }
                           }}
+                          showRecentSearches
                         />
                       </div>
-                      <CreateCatalogViewButton />
+                      <CreateCatalogViewButton
+                        assetSelection={
+                          viewType === AssetGraphViewType.GLOBAL ? explorerPath.opsQuery : undefined
+                        }
+                      />
                       <AssetLiveDataRefreshButton />
                     </>
                   )}
                   {isIframe() ? null : (
                     <LaunchAssetExecutionButton
                       preferredJobName={explorerPath.pipelineName}
+                      pipelineSelector={
+                        viewType === AssetGraphViewType.JOB &&
+                        fetchOptions.pipelineSelector &&
+                        !isHiddenAssetGroupJob(fetchOptions.pipelineSelector.pipelineName)
+                          ? fetchOptions.pipelineSelector
+                          : undefined
+                      }
                       scope={
                         nextLayoutLoading
                           ? {all: []}
@@ -905,7 +923,6 @@ const AssetGraphExplorerWithData = ({
         showSidebar ? (
           <AssetGraphExplorerSidebar
             viewType={viewType}
-            allAssetKeys={allAssetKeys}
             assetGraphData={assetGraphData}
             fullAssetGraphData={fullAssetGraphData}
             selectedNodes={selectedGraphNodes}

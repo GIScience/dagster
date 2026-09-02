@@ -1,7 +1,7 @@
 import dagster as dg
 
 
-@dg.repository  # pyright: ignore[reportArgumentType]  # ty: ignore[invalid-argument-type]
+@dg.repository
 def error_repo():
     a = None
-    a()  # pyright: ignore[reportOptionalCall]  # ty: ignore[call-non-callable]
+    a()  # ty: ignore[call-non-callable]

@@ -4,15 +4,15 @@ import {
   Dialog,
   DialogBody,
   DialogFooter,
+  Heading,
   Icon,
   Menu,
   MenuItem,
-  Mono,
   NonIdealState,
   Popover,
   Spinner,
-  Subheading,
   Tag,
+  Text,
   Tooltip,
   useViewport,
 } from '@dagster-io/ui-components';
@@ -155,6 +155,11 @@ const EvaluateSchedule = ({repoAddress, name, onClose, jobName}: Props) => {
         showCustomAlert({
           title: 'Schedule not found',
           body: `Could not find a schedule named: ${name}`,
+        });
+      } else if (data?.__typename === 'UnauthorizedError') {
+        showCustomAlert({
+          title: 'Unauthorized',
+          body: 'You do not have permission to dry run this schedule.',
         });
       } else {
         setScheduleExecutionError(data);
@@ -515,7 +520,9 @@ const EvaluateScheduleResult = ({
     if (!evaluationResult.runRequests?.length) {
       return (
         <Box flex={{direction: 'column', gap: 8}}>
-          <Subheading style={{marginBottom: 8}}>Requested runs (0)</Subheading>
+          <Heading size={14} weight={600} style={{marginBottom: 8}}>
+            Requested runs (0)
+          </Heading>
           <div>
             <div className={styles.skipReasonNonIdealStateWrapper}>
               <NonIdealState
@@ -544,7 +551,9 @@ const EvaluateScheduleResult = ({
     } else {
       return (
         <Box flex={{direction: 'column', gap: 8}}>
-          <Subheading>Requested runs ({numRunRequests})</Subheading>
+          <Heading size={14} weight={600}>
+            Requested runs ({numRunRequests})
+          </Heading>
           <RunRequestTable
             runRequests={evaluationResult.runRequests}
             repoAddress={repoAddress}
@@ -565,7 +574,9 @@ const EvaluateScheduleResult = ({
       <Box>
         <div className={styles.grid}>
           <div>
-            <Subheading>Result</Subheading>
+            <Heading size={14} weight={600} className={styles.gridHeading}>
+              Result
+            </Heading>
             <Box flex={{grow: 1, alignItems: 'center'}}>
               <div>
                 {error ? (
@@ -579,9 +590,11 @@ const EvaluateScheduleResult = ({
             </Box>
           </div>
           <div>
-            <Subheading>Tick</Subheading>
+            <Heading size={14} weight={600} className={styles.gridHeading}>
+              Tick
+            </Heading>
             <Box flex={{grow: 1, alignItems: 'center'}}>
-              <Mono>
+              <Text size={14} family="mono">
                 {timestampToString({
                   timestamp: {unix: timestamp},
                   locale,
@@ -590,7 +603,7 @@ const EvaluateScheduleResult = ({
                     showTimezone: true,
                   },
                 })}
-              </Mono>
+              </Text>
             </Box>
           </div>
         </div>

@@ -828,7 +828,7 @@ class GrapheneAssetNode(graphene.ObjectType):
         )
         return [
             GrapheneAssetStaleCause(
-                GrapheneAssetKey(path=cause.asset_key.path),
+                GrapheneAssetKey(path=cause.asset_key.path),  # ty: ignore[too-many-positional-arguments]
                 cause.partition_key,
                 cause.category,
                 cause.reason,
@@ -916,7 +916,9 @@ class GrapheneAssetNode(graphene.ObjectType):
     ) -> GrapheneAssetFreshnessInfo | None:
         if graphene_info.context.instance.legacy_freshness_policy_killswitch_enabled():
             return None
-        if self._asset_node_snap.legacy_freshness_policy:
+        # Read policies through the workspace-merged node rather than the singular node's
+        # snap, so a policy declared in a non-winning location is surfaced.
+        if self._remote_node.legacy_freshness_policy:
             return get_freshness_info(
                 asset_key=self._asset_node_snap.asset_key,
                 data_time_resolver=graphene_info.context.data_time_resolver,
@@ -926,8 +928,9 @@ class GrapheneAssetNode(graphene.ObjectType):
     def resolve_freshnessPolicy(self, graphene_info: ResolveInfo) -> GrapheneFreshnessPolicy | None:
         if graphene_info.context.instance.legacy_freshness_policy_killswitch_enabled():
             return None
-        if self._asset_node_snap.legacy_freshness_policy:
-            return GrapheneFreshnessPolicy(self._asset_node_snap.legacy_freshness_policy)
+        legacy_freshness_policy = self._remote_node.legacy_freshness_policy
+        if legacy_freshness_policy:
+            return GrapheneFreshnessPolicy(legacy_freshness_policy)
         return None
 
     async def resolve_freshnessStatusInfo(
@@ -935,7 +938,7 @@ class GrapheneAssetNode(graphene.ObjectType):
     ) -> GrapheneFreshnessStatusInfo | None:
         from dagster_graphql.schema.asset_health import GrapheneAssetHealthFreshnessMeta
 
-        if not self._asset_node_snap.freshness_policy:
+        if not self._remote_node.freshness_policy:
             return None
 
         freshness_status, freshness_status_metadata = await get_freshness_status_and_metadata(
@@ -953,10 +956,9 @@ class GrapheneAssetNode(graphene.ObjectType):
     def resolve_internalFreshnessPolicy(
         self, graphene_info: ResolveInfo
     ) -> GrapheneInternalFreshnessPolicy | None:
-        if self._asset_node_snap.freshness_policy:
-            return GrapheneInternalFreshnessPolicy.from_policy(
-                self._asset_node_snap.freshness_policy
-            )
+        freshness_policy = self._remote_node.freshness_policy
+        if freshness_policy:
+            return GrapheneInternalFreshnessPolicy.from_policy(freshness_policy)
         return None
 
     def resolve_autoMaterializePolicy(
@@ -972,7 +974,9 @@ class GrapheneAssetNode(graphene.ObjectType):
         ac_snapshot = get_ac_snapshot(self._asset_node_snap)
         return GrapheneAutomationCondition(ac_snapshot) if ac_snapshot else None
 
-    def resolve_targetingInstigators(self, graphene_info: ResolveInfo) -> Sequence[GrapheneSensor]:
+    def resolve_targetingInstigators(
+        self, graphene_info: ResolveInfo
+    ) -> Sequence[GrapheneSensor | GrapheneSchedule]:
         if isinstance(self._remote_node, RemoteWorkspaceAssetNode):
             # global nodes have saved references to their targeting instigators
             schedules = [
@@ -1240,7 +1244,8 @@ class GrapheneAssetNode(graphene.ObjectType):
         if address is None:
             return None
         return GrapheneStorageAddress(
-            storageKind=address.storage_kind, tableName=address.table_name
+            storageKind=address.storage_kind,
+            tableName=address.table_name,
         )
 
     def resolve_isAutoCreatedStub(self, _graphene_info: ResolveInfo) -> bool:
@@ -1455,7 +1460,7 @@ class GrapheneAssetNode(graphene.ObjectType):
     ) -> GrapheneAssetCheckOrError:
         validation_error = check_asset_checks_support(graphene_info, self._repository_handle)
         if validation_error:
-            return validation_error
+            return validation_error  # ty: ignore[invalid-return-type]
 
         remote_check_nodes = graphene_info.context.asset_graph.get_checks_for_asset(
             self._asset_node_snap.asset_key
@@ -1472,10 +1477,10 @@ class GrapheneAssetNode(graphene.ObjectType):
             None,
         )
         if not matching_node:
-            return GrapheneAssetCheckNotFoundError(
+            return GrapheneAssetCheckNotFoundError(  # ty: ignore[invalid-return-type]
                 message=f"Asset check '{checkName}' not found for asset '{self._asset_node_snap.asset_key.to_user_string()}'"
             )
-        return GrapheneAssetCheck(matching_node)
+        return GrapheneAssetCheck(matching_node)  # ty: ignore[invalid-return-type]
 
     def resolve_assetChecksOrError(
         self,
@@ -1500,7 +1505,7 @@ class GrapheneAssetNode(graphene.ObjectType):
             )
         elif asset_check_support == AssetCheckInstanceSupport.NEEDS_AGENT_UPGRADE:
             return GrapheneAssetCheckNeedsAgentUpgradeError(
-                "Asset checks require an agent upgrade to 1.5.0 or greater."
+                "Asset checks require an agent upgrade to 1.5.0 or greater."  # ty: ignore[too-many-positional-arguments]
             )
         else:
             check.invariant(
