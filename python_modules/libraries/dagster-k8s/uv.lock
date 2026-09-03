@@ -1227,7 +1227,7 @@ test-postgres = [{ name = "dagster-postgres", editable = "../dagster-postgres" }
 
 [[package]]
 name = "dagster-k8s"
-version = "1!0+dev"
+version = "0.29.20"
 source = { editable = "." }
 dependencies = [
     { name = "dagster" },
